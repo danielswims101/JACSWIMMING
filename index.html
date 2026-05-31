@@ -1364,90 +1364,80 @@ footer{background:var(--navy2);border-top:1px solid var(--border);padding:3rem 2
   </div>
 </div>
 
+<!-- API key loaded from config.js — never commit that file to GitHub -->
+<script src="config.js"></script>
 <script>
 // ─────────────────────────────────────────────
 // DEVICE-LOCKED ACCESS CODE SYSTEM
-// To add a new user:
-//   1. Get their device fingerprint by having them visit the page
-//      and checking the browser console (their fingerprint is logged)
-//   2. Generate a code: VALID_CODES[deviceFingerprint] = 'YOURCODE'
-//   3. Tell them their code — it only works on their device
+//
+// HOW TO ADD A USER:
+//   1. They open the site — their fingerprint appears
+//      in the browser Console (F12 → Console tab)
+//      as a blue line: [SwimIQ] Device fingerprint: a3f9c812
+//   2. Add their fingerprint + a code of your choice below
+//   3. Tell them their code — works ONLY on their device
 // ─────────────────────────────────────────────
 
-// Map of device fingerprint → valid access code
-// Add entries here for each user you want to grant access:
-// Example: 'abc123fingerprint': 'SWIM2025'
 const VALID_CODES = {
-  // 'DEVICE_FINGERPRINT_HERE': 'ACCESS_CODE_HERE',
   '3cd4d359': 'DanielMacCode',
-  // 'abc123': 'COACHSWIM',
-  // 'def456': 'SWIMMER99',
+  // 'b72e1a04': 'SARAH2025',
+  
+  // Add more lines here as needed
 };
 
-// Master override code (works on ANY device — keep private)
-const MASTER_CODE = 'Daniel!2026MasterCode';
+// Master code — works on ANY device. Keep this private.
+const MASTER_CODE = 'Daniel!2026MasterKey';
 
 // ── Device fingerprinting ──
-async function getDeviceFingerprint() {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  ctx.textBaseline = 'top';
-  ctx.font = '14px Arial';
-  ctx.fillText('SwimIQ🏊', 2, 2);
-  const canvasData = canvas.toDataURL();
-
-  const components = [
-    navigator.userAgent,
-    navigator.language,
-    screen.width + 'x' + screen.height,
-    screen.colorDepth,
-    new Date().getTimezoneOffset(),
-    navigator.hardwareConcurrency || '',
-    navigator.platform || '',
-    canvasData.slice(-50)
-  ].join('|');
-
-  // Simple hash
-  let hash = 0;
-  for (let i = 0; i < components.length; i++) {
-    const char = components.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+function buildFingerprint() {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#00d4ff';
+    ctx.fillText('SwimIQ', 2, 2);
+    const canvasData = canvas.toDataURL().slice(-60);
+    const components = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height,
+      screen.colorDepth,
+      new Date().getTimezoneOffset(),
+      navigator.hardwareConcurrency || '0',
+      canvasData
+    ].join('|||');
+    let hash = 0;
+    for (let i = 0; i < components.length; i++) {
+      hash = ((hash << 5) - hash) + components.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16).padStart(8, '0');
+  } catch(e) {
+    return 'fallback1';
   }
-  const fp = Math.abs(hash).toString(16).padStart(8, '0');
-  console.log('%c[SwimIQ] Device fingerprint: ' + fp, 'color:#00d4ff;font-family:monospace');
-  return fp;
 }
 
-let deviceFP = '';
-getDeviceFingerprint().then(fp => { deviceFP = fp; });
+// Build fingerprint immediately (synchronous — no async race condition)
+const deviceFP = buildFingerprint();
+console.log('%c[SwimIQ] Your device fingerprint: ' + deviceFP, 'color:#00d4ff;font-weight:bold;font-family:monospace;font-size:13px');
 
 function checkAccess() {
   const entered = document.getElementById('gate-input').value.trim();
   const err = document.getElementById('gate-error');
 
-  // Check master code first
-  if (entered === MASTER_CODE) {
-    unlockGate();
-    return;
-  }
+  // Master code — any device
+  if (entered === MASTER_CODE) { unlockGate(); return; }
 
-  // Check device-specific code
-  const expectedCode = VALID_CODES[deviceFP];
-  if (expectedCode && entered === expectedCode) {
-    unlockGate();
-    return;
-  }
+  // Device-specific code
+  if (VALID_CODES[deviceFP] && entered === VALID_CODES[deviceFP]) { unlockGate(); return; }
 
-  // Wrong code
+  // Wrong — show error
   err.style.display = 'block';
   const input = document.getElementById('gate-input');
   input.style.borderColor = 'var(--red)';
   input.value = '';
-  setTimeout(() => {
-    err.style.display = 'none';
-    input.style.borderColor = 'var(--border)';
-  }, 3000);
+  setTimeout(() => { err.style.display = 'none'; input.style.borderColor = 'var(--border)'; }, 3000);
 }
 
 function unlockGate() {
@@ -1582,8 +1572,8 @@ async function sendToAI() {
   const msg = input.value.trim();
   if (!msg) return;
 
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY || ANTHROPIC_API_KEY === 'YOUR_KEY_HERE') {
-    addMsg('⚠️ No API key found. Make sure config.js is in the same folder as this HTML file and contains:\n\nconst ANTHROPIC_API_KEY = "your-key-here";', 'ai');
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
+    addMsg('⚠️ No API key found. Make sure config.js is in the same folder as this HTML file and contains:\n\nconst ANTHROPIC_API_KEY = "sk-ant-...yourkey...";', 'ai');
     return;
   }
 
@@ -1678,7 +1668,7 @@ document.getElementById('ai-input').addEventListener('keydown', e => { if (e.key
 // WORKOUT GENERATOR
 // ─────────────────────────────────────────────
 async function generateWorkout() {
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY || ANTHROPIC_API_KEY === 'YOUR_KEY_HERE') {
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
     alert('API key not set — check your config.js file.');
     return;
   }
@@ -1780,7 +1770,7 @@ const VIZ_CONCEPTS = {
 };
 
 async function generateVisualization() {
-  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY || ANTHROPIC_API_KEY === 'YOUR_KEY_HERE') {
+  if (typeof ANTHROPIC_API_KEY === 'undefined' || !ANTHROPIC_API_KEY) {
     alert('API key not set — check your config.js file.');
     return;
   }
